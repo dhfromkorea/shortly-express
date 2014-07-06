@@ -27,16 +27,16 @@ app.configure(function() {
   app.use(express.static(__dirname + '/public'));
 });
 
-app.get('/', checkUser, function(req, res) {
+app.get('/', util.authenticated, function(req, res) {
   res.render('index');
 });
 
-app.get('/create', checkUser, function(req, res) {
+app.get('/create', util.authenticated, function(req, res) {
   res.render('index');
 });
 
-app.get('/links', checkUser, function(req, res) {
-  Links.reset().fetch().then(function(links) {
+app.get('/links', util.authenticated, function(req, res) {
+  Links.reset().fetch({where:{username: req.session.username}}).then(function(links) {
     res.send(200, links.models);
   });
 });
@@ -49,7 +49,7 @@ app.get('/login', function(req, res) {
   res.render('login');
 });
 
-app.get('/logout', function(req, res){
+app.get('/logout', function(req, res) {
   req.session = null;
   res.render('login');
 });
@@ -95,20 +95,9 @@ app.post('/signup', function(req, res) {
   var password = req.body.password;
   new User({
     username: username
-  }).fetch().then(function(found) {
-    if (found) {
-      res.redirect('/');
-    } else {
-      var user = new User({
-        username: username,
-        password: password
-      });
-      user.save().then(function(newUser) {
-        Users.add(newUser);
-        res.redirect('/');
-      });
-    }
-  });
+  }).fetch().then(
+    signUpUser(user, username, password)
+  );
 });
 
 
@@ -117,36 +106,44 @@ app.post('/login', function(req, res) {
   var password = req.body.password;
   new User({
     username: username
-  }).fetch().then(function(found) {
-    if (found) {
-      var hash = found.get('password');
-      bcrypt.compare(password, hash, function(err, verified) {
-        if (verified) {
-          res.redirect('/');
-        } else {
-          res.redirect('/login');
-        }
-      });
-    } else {
-      res.redirect('/signup');
-    }
-  });
+  }).fetch().then(
+    signOnUser(user, username, password)
+  );
 });
 
 /************************************************************/
 // Write your authentication routes here
 /************************************************************/
 
-
-function checkUser(req, res, next) {
-  if ( req.cookies['connect.sess'] ) {
-    // check the user submitted token against the stored token
-    return next();
+function signUpUser(user, username, password) {
+  if (user) {
+    res.redirect('/');
+  } else {
+    var newUser = new User({
+      username: username,
+      password: password
+    });
+    newUser.save().then(function(newUser) {
+      Users.add(newUser);
+      res.redirect('/');
+    });
   }
-  res.redirect('/login');
 }
 
-
+function signOnUser(user, username, password) {
+  if (user) {
+    var hash = user.get('password');
+    bcrypt.compare(password, hash, function(err, verified) {
+      if (verified) {
+        util.createSession(req, res, user);
+      } else {
+        res.redirect('/login');
+      }
+    });
+  } else {
+    res.redirect('/signup');
+  }
+}
 
 
 
